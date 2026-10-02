@@ -1,0 +1,19 @@
+# 编辑器 / IDE
+.vscode/
+.idea/
+*.swp
+
+# 操作系统
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 验证脚本 / 调试过程产生的临时文件
+tmp*.txt
+tmp*.html
+tmpprobe.html
+_old_emulation.html
+
+# 无头浏览器 profile 兜底（verify-ui.js 实际建在系统临时目录）
+dshui*/
+dshprof*/

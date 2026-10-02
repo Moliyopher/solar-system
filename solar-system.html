@@ -1,0 +1,1500 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>太阳系 · 真实轨道模拟器</title>
+<style>
+  :root{
+    --bg:#04060d;
+    --panel:rgba(12,18,32,.78);
+    --panel-brd:rgba(120,170,255,.18);
+    --txt:#dfe8f7;
+    --dim:#8fa2c0;
+    --accent:#63b8ff;
+    --accent2:#ffd45e;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--txt);
+    font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;user-select:none}
+  /* numbers in the panels should stay copyable even though the canvas must not select */
+  #topbar,#leftPanel,#rightPanel{user-select:text}
+  #topbar button,#leftPanel button,#rightPanel button,.bodyRow,.brand{user-select:none}
+  #view{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:grab;touch-action:none}
+  #view.dragging{cursor:grabbing}
+
+  .panel{background:var(--panel);border:1px solid var(--panel-brd);border-radius:12px;
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    box-shadow:0 8px 32px rgba(0,0,0,.5)}
+  .sub{color:var(--dim);font-size:11px}
+  .mono{font-family:ui-monospace,Consolas,"Courier New",monospace;font-variant-numeric:tabular-nums}
+
+  /* ---------- top bar ---------- */
+  #topbar{position:fixed;top:10px;left:10px;right:10px;z-index:20;
+    display:flex;align-items:center;gap:14px;padding:9px 14px;flex-wrap:wrap}
+  .brand{font-size:14px;font-weight:600;letter-spacing:.5px;white-space:nowrap}
+  .brand b{color:var(--accent2)}
+  #clock{line-height:1.25;min-width:186px}
+  #dateText{font-size:14px;font-weight:600;letter-spacing:.3px}
+  .tgroup{display:flex;align-items:center;gap:6px}
+  button{background:rgba(255,255,255,.06);color:var(--txt);border:1px solid rgba(160,200,255,.22);
+    border-radius:8px;padding:5px 9px;font-size:12px;cursor:pointer;transition:.15s;font-family:inherit}
+  button:hover{background:rgba(120,180,255,.22);border-color:var(--accent)}
+  button.on{background:rgba(99,184,255,.3);border-color:var(--accent);color:#fff}
+  button.primary{background:rgba(99,184,255,.18);border-color:rgba(99,184,255,.6)}
+  select,input[type=datetime-local]{background:rgba(255,255,255,.06);color:var(--txt);
+    border:1px solid rgba(160,200,255,.22);border-radius:8px;padding:5px 7px;font-size:12px;
+    font-family:inherit;outline:none}
+  select option{background:#0b1220}
+  input[type=range]{-webkit-appearance:none;appearance:none;height:4px;border-radius:3px;
+    background:rgba(255,255,255,.16);outline:none;cursor:pointer}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;
+    background:var(--accent);cursor:pointer;box-shadow:0 0 8px rgba(99,184,255,.8)}
+  input[type=range]::-moz-range-thumb{width:13px;height:13px;border:none;border-radius:50%;background:var(--accent)}
+  #speedSlider{width:120px}
+  #speedText{font-size:12px;min-width:96px;color:var(--accent)}
+  .sep{width:1px;height:22px;background:rgba(160,200,255,.18)}
+
+  /* ---------- side panels ---------- */
+  aside{position:fixed;z-index:15;padding:12px 13px;max-height:calc(100vh - 140px);overflow-y:auto}
+  #leftPanel{left:10px;top:74px;width:238px}
+  #rightPanel{right:10px;top:74px;width:266px}
+  aside::-webkit-scrollbar{width:6px}
+  aside::-webkit-scrollbar-thumb{background:rgba(120,170,255,.3);border-radius:3px}
+  h3{margin:0 0 8px;font-size:11px;letter-spacing:1.6px;color:var(--accent);font-weight:600;
+     text-transform:uppercase}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:5px 0;font-size:12px}
+  .btns{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+  .btns button{padding:4px 7px;font-size:11px}
+  hr{border:none;border-top:1px solid rgba(160,200,255,.14);margin:11px 0}
+
+  /* ---------- body list ---------- */
+  #bodyList{display:flex;flex-direction:column;gap:1px}
+  .bodyRow{display:flex;align-items:center;gap:7px;padding:4px 6px;border-radius:7px;cursor:pointer;
+    font-size:12px;transition:.12s}
+  .bodyRow:hover{background:rgba(120,180,255,.12)}
+  .bodyRow.sel{background:rgba(99,184,255,.2);box-shadow:inset 0 0 0 1px rgba(99,184,255,.45)}
+  .bodyRow.center{background:rgba(255,212,94,.13);box-shadow:inset 0 0 0 1px rgba(255,212,94,.4)}
+  .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto;box-shadow:0 0 7px currentColor;
+    background:currentColor}
+  .bodyRow .nm{flex:1 1 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bodyRow .ds{flex:0 0 auto;font-size:11px;color:var(--dim)}
+  .bodyRow .pin{flex:0 0 auto;opacity:.35;font-size:11px;padding:0 2px;border-radius:4px}
+  .bodyRow .pin:hover{opacity:1;background:rgba(255,212,94,.25)}
+
+  /* ---------- detail ---------- */
+  #detail .dt{display:flex;justify-content:space-between;font-size:12px;margin:3px 0}
+  #detail .dt span:first-child{color:var(--dim)}
+  .tagline{font-size:11px;color:var(--dim);line-height:1.6;margin-top:8px}
+
+  #hint{position:fixed;left:50%;bottom:8px;transform:translateX(-50%);z-index:10;
+    font-size:11px;color:rgba(190,210,235,.62);background:rgba(6,10,20,.6);padding:5px 12px;
+    border-radius:20px;white-space:nowrap;border:1px solid rgba(120,170,255,.12)}
+  #toast{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:60;
+    padding:10px 18px;border-radius:10px;font-size:13px;background:rgba(10,16,30,.92);
+    border:1px solid var(--panel-brd);opacity:0;pointer-events:none;transition:opacity .35s}
+  #toast.show{opacity:1}
+  #frameBadge{position:fixed;left:50%;bottom:40px;transform:translateX(-50%);z-index:12;
+    font-size:13px;letter-spacing:2px;color:var(--accent2);text-shadow:0 0 14px rgba(255,212,94,.5);
+    pointer-events:none;opacity:.85}
+  #btnPanels{display:none}
+  @media (max-width:900px){
+    #btnPanels{display:inline-block}
+    #leftPanel{display:none;top:74px;z-index:30;max-height:58vh}
+    body.panels-open #leftPanel{display:block}
+    #rightPanel{width:200px;top:auto;bottom:44px;max-height:44vh}
+    #hint{display:none}
+  }
+</style>
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<header id="topbar" class="panel">
+  <div class="brand">☉ 太阳系 · <b>真实轨道模拟</b></div>
+  <div class="sep"></div>
+  <div id="clock">
+    <div id="dateText" class="mono">—</div>
+    <div id="jdText" class="sub mono">—</div>
+  </div>
+  <div class="sep"></div>
+  <div class="tgroup">
+    <button id="btnReverse" title="时间倒流">⇄</button>
+    <button id="btnPlay" title="暂停 / 继续 (空格)">⏸</button>
+    <input id="speedSlider" type="range" min="-5" max="3.65" step="0.005" value="0">
+    <span id="speedText" class="mono">—</span>
+  </div>
+  <div class="tgroup" id="presets"></div>
+  <div class="sep"></div>
+  <div class="tgroup">
+    <input id="dateInput" type="datetime-local" step="60">
+    <button id="btnGoto">跳转</button>
+    <button id="btnNow">现在</button>
+  </div>
+  <button id="btnPanels" title="显示 / 隐藏设置面板">⚙ 设置</button>
+</header>
+
+<aside id="leftPanel" class="panel">
+  <h3>参考系中心</h3>
+  <div class="row"><span>中心天体</span>
+    <select id="centerSel"></select>
+  </div>
+  <div class="btns">
+    <button data-center="sun">日心</button>
+    <button data-center="earth" class="primary">地心 ★</button>
+    <button data-center="mars">火星</button>
+    <button data-center="jupiter">木星</button>
+  </div>
+  <div class="tagline" id="centerNote"></div>
+
+  <hr>
+  <h3>视图</h3>
+  <div class="row"><span>距离压缩</span><button id="tglCompress" class="on">开启</button></div>
+  <div class="tagline">真实距离下内行星挤在中心；压缩按 r<sup>0.45</sup> 映射，仅用于显示，数值仍为真值。</div>
+  <div class="row" style="margin-top:9px"><span>轨道线</span><button id="tglOrbits" class="on">开</button></div>
+  <div class="row"><span>运动轨迹</span><button id="tglTrails" class="on">开</button></div>
+  <div class="tagline">轨迹按<b>当前参考系</b>逐点记录：每个点取该时刻「天体位置 − 中心天体位置」。画下即固定不动，只有末端随天体延伸；切换中心会重绘。</div>
+  <div class="row"><span>轨迹时长</span><input id="trailRange" type="range" min="10" max="6000" step="1" value="800" style="width:96px"></div>
+  <div class="row"><span>—</span><span class="sub mono" id="trailText">800 天</span></div>
+  <div class="row"><span>名称标签</span><button id="tglLabels" class="on">开</button></div>
+  <div class="row"><span>星空背景</span><button id="tglStars" class="on">开</button></div>
+  <div class="row"><span>黄道面网格</span><button id="tglGrid" class="on">开</button></div>
+  <div class="row"><span>月球</span><button id="tglMoon" class="on">开</button></div>
+  <div class="row"><span>冥王星</span><button id="tglPluto">关</button></div>
+  <div class="row"><span>行星放大</span><input id="sizeRange" type="range" min="1" max="6" step="0.1" value="1" style="width:96px"></div>
+
+  <hr>
+  <h3>相机</h3>
+  <div class="btns">
+    <button id="btnFit">自动取景</button>
+    <button id="btnTop">俯视黄道</button>
+    <button id="btnSide">侧视</button>
+    <button id="btnResetView">重置视角</button>
+  </div>
+</aside>
+
+<aside id="rightPanel" class="panel">
+  <h3>天体 · 相对参考系中心</h3>
+  <div id="bodyList"></div>
+  <hr>
+  <h3 id="detailTitle">详情</h3>
+  <div id="detail"></div>
+  <div class="tagline" id="srcNote"></div>
+</aside>
+
+<div id="frameBadge"></div>
+<div id="hint">拖拽旋转 · 滚轮缩放 · 右键拖拽平移 · 双击天体设为中心 · 空格暂停</div>
+<div id="toast"></div>
+
+<script>
+/* =========================================================================
+   EPHEMERIS CORE  —  pure math, no DOM.  (start marker used by verify script)
+   Source: JPL "Approximate Positions of the Planets" Keplerian elements,
+   1800 AD – 2050 AD (heliocentric ecliptic J2000) + abridged Meeus lunar theory.
+   ========================================================================= */
+/* ===== EPHEMERIS CORE START ===== */
+const DEG = Math.PI / 180;
+const AU_KM = 149597870.7;
+const C_KM_S = 299792.458;
+const J2000 = 2451545.0;
+const OBLIQUITY = 23.4392911 * DEG;
+
+// a[AU], e, I[deg], L[deg], wbar[deg], node[deg] + per-century rates.
+const ELEMENTS = {
+  mercury:{ a:0.38709927,e:0.20563593,I:7.00497902,L:252.25032350,wbar:77.45779628,node:48.33076593,
+            ra:0.00000037,re:0.00001906,rI:-0.00594749,rL:149472.67411175,rwbar:0.16047689,rnode:-0.12534081 },
+  venus:  { a:0.72333566,e:0.00677672,I:3.39467605,L:181.97909950,wbar:131.60246718,node:76.67984255,
+            ra:0.00000390,re:-0.00004107,rI:-0.00078890,rL:58517.81538729,rwbar:0.00268329,rnode:-0.27769418 },
+  earth:  { a:1.00000261,e:0.01671123,I:-0.00001531,L:100.46457166,wbar:102.93768193,node:0.0,
+            ra:0.00000562,re:-0.00004392,rI:-0.01294668,rL:35999.37244981,rwbar:0.32327364,rnode:0.0 },
+  mars:   { a:1.52371034,e:0.09339410,I:1.84969142,L:-4.55343205,wbar:-23.94362959,node:49.55953891,
+            ra:0.00001847,re:0.00007882,rI:-0.00813131,rL:19140.30268499,rwbar:0.44441088,rnode:-0.29257343 },
+  jupiter:{ a:5.20288700,e:0.04838624,I:1.30439695,L:34.39644051,wbar:14.72847983,node:100.47390909,
+            ra:-0.00011607,re:-0.00013253,rI:-0.00183714,rL:3034.74612775,rwbar:0.21252668,rnode:0.20469106 },
+  saturn: { a:9.53667594,e:0.05386179,I:2.48599187,L:49.95424423,wbar:92.59887831,node:113.66242448,
+            ra:-0.00125060,re:-0.00050991,rI:0.00193609,rL:1222.49362201,rwbar:-0.41897216,rnode:-0.28867794 },
+  uranus: { a:19.18916464,e:0.04725744,I:0.77263783,L:313.23810451,wbar:170.95427630,node:74.01692503,
+            ra:-0.00196176,re:-0.00004397,rI:-0.00242939,rL:428.48202785,rwbar:0.40805281,rnode:0.04240589 },
+  neptune:{ a:30.06992276,e:0.00859048,I:1.77004347,L:-55.12002969,wbar:44.96476227,node:131.78422574,
+            ra:0.00026291,re:0.00005105,rI:0.00035372,rL:218.45945325,rwbar:-0.32241464,rnode:-0.00508664 },
+  pluto:  { a:39.48211675,e:0.24882730,I:17.14001206,L:238.92903833,wbar:224.06891629,node:110.30393684,
+            ra:-0.00031596,re:0.00005170,rI:0.00004818,rL:145.20780515,rwbar:-0.04062942,rnode:-0.01183482 }
+};
+
+// Visual / physical metadata (radius in km).
+const BODY_META = {
+  sun:    { name:'太阳',   color:'#ffd45e', radiusKm:696340,  kind:'star' },
+  mercury:{ name:'水星',   color:'#a9a19a', radiusKm:2439.7,  kind:'planet' },
+  venus:  { name:'金星',   color:'#e8c88a', radiusKm:6051.8,  kind:'planet' },
+  earth:  { name:'地球',   color:'#5aa9f0', radiusKm:6371.0,  kind:'planet' },
+  moon:   { name:'月球',   color:'#cfd3d8', radiusKm:1737.4,  kind:'moon', parent:'earth' },
+  mars:   { name:'火星',   color:'#d1603d', radiusKm:3389.5,  kind:'planet' },
+  jupiter:{ name:'木星',   color:'#d8a86a', radiusKm:69911,   kind:'planet' },
+  saturn: { name:'土星',   color:'#e0c98a', radiusKm:58232,   kind:'planet' },
+  uranus: { name:'天王星', color:'#8fd6dd', radiusKm:25362,   kind:'planet' },
+  neptune:{ name:'海王星', color:'#5b7fe0', radiusKm:24622,   kind:'planet' },
+  pluto:  { name:'冥王星', color:'#b9a99a', radiusKm:1188.3,  kind:'planet' }
+};
+
+const PLANET_IDS = ['mercury','venus','earth','mars','jupiter','saturn','uranus','neptune','pluto'];
+
+/* ---------- time helpers ---------- */
+function julianFromDate(ms){ return ms / 86400000 + 2440587.5; }
+function dateFromJulian(jd){ return new Date((jd - 2440587.5) * 86400000); }
+function centuryTT(jd){ return (jd - J2000) / 36525; }
+
+/* ---------- Kepler solver ---------- */
+function keplerSolve(M, e){
+  let E = M + e * Math.sin(M) * (1 + e * Math.cos(M));   // good starting guess
+  for (let i = 0; i < 80; i++){
+    const f  = E - e * Math.sin(E) - M;
+    const fp = 1 - e * Math.cos(E);
+    const d  = f / fp;
+    E -= d;
+    if (Math.abs(d) < 1e-13) break;
+  }
+  return E;
+}
+
+/* ---------- heliocentric position of a planet (ecliptic J2000, AU) ---------- */
+function elementsAt(jd, el){
+  const T = centuryTT(jd);
+  return {
+    a:    el.a    + el.ra    * T,
+    e:    el.e    + el.re    * T,
+    I:    el.I    + el.rI    * T,
+    L:    el.L    + el.rL    * T,
+    wbar: el.wbar + el.rwbar * T,
+    node: el.node + el.rnode * T,
+    T
+  };
+}
+
+function orbitalToEcliptic(xp, yp, q){
+  const w  = (q.wbar - q.node) * DEG;
+  const O  = q.node * DEG;
+  const I  = q.I * DEG;
+  const cw = Math.cos(w),  sw = Math.sin(w);
+  const cO = Math.cos(O),  sO = Math.sin(O);
+  const cI = Math.cos(I),  sI = Math.sin(I);
+  return [
+    (cw*cO - sw*sO*cI) * xp + (-sw*cO - cw*sO*cI) * yp,
+    (cw*sO + sw*cO*cI) * xp + (-sw*sO + cw*cO*cI) * yp,
+    (sw*sI)           * xp + (cw*sI)           * yp
+  ];
+}
+
+function heliocentric(jd, el){
+  const q = elementsAt(jd, el);
+  let M = (q.L - q.wbar) % 360;
+  if (M > 180) M -= 360; else if (M < -180) M += 360;
+  const Mr = M * DEG;
+  const E  = keplerSolve(Mr, q.e);
+  const xp = q.a * (Math.cos(E) - q.e);
+  const yp = q.a * Math.sqrt(Math.max(0, 1 - q.e*q.e)) * Math.sin(E);
+  const p  = orbitalToEcliptic(xp, yp, q);
+  return { x:p[0], y:p[1], z:p[2], r:Math.hypot(p[0],p[1],p[2]), el:q, E, M };
+}
+
+/* ---------- geocentric Moon (abridged Meeus, ~10" / few-hundred-km accuracy) ---------- */
+function moonGeocentric(jd){
+  const d  = jd - J2000;
+  const L  = 218.3164477 + 13.17639648 * d;
+  const D  = 297.8501921 + 12.19074912 * d;
+  const M  = 134.9633964 + 13.06499295 * d;
+  const F  = 93.2720950 + 13.22935024 * d;
+  const Ms = 357.5291092 + 0.98560028 * d;
+  const s  = x => Math.sin(x * DEG);
+
+  const lonOfDate = L
+    + 6.288774*s(M) + 1.274027*s(2*D - M) + 0.658314*s(2*D) + 0.213618*s(2*M)
+    - 0.185116*s(Ms) - 0.114332*s(2*F) + 0.058793*s(2*D - 2*M)
+    + 0.057066*s(2*D - Ms - M) + 0.053322*s(2*D + M) + 0.045758*s(2*D - Ms)
+    - 0.040923*s(Ms - M) - 0.034720*s(D) - 0.030383*s(Ms + M)
+    + 0.015327*s(2*D - 2*F) - 0.012528*s(M + 2*F) + 0.010980*s(M - 2*F);
+
+  // Meeus' series is referred to the mean equinox of date; reduce to J2000 so
+  // that the Moon shares the same frame as the planetary elements and stars.
+  const T = (jd - J2000) / 36525;
+  const lon = lonOfDate - (5028.796195 * T + 1.1054348 * T * T) / 3600;
+
+  const lat = 5.128122*s(F) + 0.280602*s(M + F) + 0.277693*s(M - F)
+    + 0.173237*s(2*D - F) + 0.055413*s(2*D - M + F) + 0.046271*s(2*D - M - F)
+    + 0.032573*s(2*D + F);
+
+  const rKm = 385000.56
+    - 20905.355*Math.cos(M*DEG) - 3699.111*Math.cos((2*D - M)*DEG)
+    - 2955.968*Math.cos(2*D*DEG) - 569.925*Math.cos(2*M*DEG)
+    - 246.158*Math.cos((2*D - 2*M)*DEG) - 170.733*Math.cos((2*D + Ms)*DEG)
+    - 152.138*Math.cos((2*D - Ms - M)*DEG) - 129.620*Math.cos((2*D - Ms)*DEG)
+    - 108.967*Math.cos((Ms - M)*DEG) - 104.755*Math.cos((Ms + M)*DEG);
+
+  const cl = Math.cos(lat*DEG), r = rKm / AU_KM;
+  return [ r*cl*Math.cos(lon*DEG), r*cl*Math.sin(lon*DEG), r*Math.sin(lat*DEG), rKm ];
+}
+
+/* ---------- unified position: heliocentric ecliptic J2000, AU ---------- */
+function bodyPosition(id, jd){
+  if (id === 'sun') return [0,0,0];
+  if (id === 'moon'){
+    const e = heliocentric(jd, ELEMENTS.earth);
+    const m = moonGeocentric(jd);
+    return [e.x + m[0], e.y + m[1], e.z + m[2]];
+  }
+  const p = heliocentric(jd, ELEMENTS[id]);
+  return [p.x, p.y, p.z];
+}
+
+/* velocity by central difference, AU/day */
+function bodyVelocity(id, jd, h){
+  h = h || 0.02;
+  const a = bodyPosition(id, jd - h), b = bodyPosition(id, jd + h);
+  return [ (b[0]-a[0])/(2*h), (b[1]-a[1])/(2*h), (b[2]-a[2])/(2*h) ];
+}
+
+/* osculating orbit path in heliocentric frame (Moon: geocentric path over 1 month) */
+function orbitPoints(id, jd, n){
+  n = n || 180;
+  const out = [];
+  if (id === 'sun') return out;
+  if (id === 'moon'){
+    // one sidereal month of the *real* perturbed geocentric path, centred on now
+    const P = 27.321661;
+    for (let i = 0; i <= n; i++){
+      const m = moonGeocentric(jd + (i/n - 0.5) * P);
+      out.push([m[0], m[1], m[2]]);
+    }
+    return out;
+  }
+  const q = elementsAt(jd, ELEMENTS[id]);
+  const b = q.a * Math.sqrt(Math.max(0, 1 - q.e*q.e));
+  for (let i = 0; i <= n; i++){
+    const E = (i/n) * Math.PI * 2;
+    out.push(orbitalToEcliptic(q.a*(Math.cos(E) - q.e), b*Math.sin(E), q));
+  }
+  return out;
+}
+
+/* ecliptic longitude / latitude of a heliocentric vector (deg) */
+function eclipticLonLat(v){
+  const r = Math.hypot(v[0], v[1], v[2]);
+  let lon = Math.atan2(v[1], v[0]) / DEG; if (lon < 0) lon += 360;
+  const lat = r > 0 ? Math.asin(v[2]/r) / DEG : 0;
+  return [lon, lat, r];
+}
+
+/* RA/Dec (J2000, deg) -> ecliptic unit vector */
+function raDecToEcliptic(raDeg, decDeg){
+  const ra = raDeg*DEG, de = decDeg*DEG;
+  const x = Math.cos(de)*Math.cos(ra), y = Math.cos(de)*Math.sin(ra), z = Math.sin(de);
+  const ce = Math.cos(OBLIQUITY), se = Math.sin(OBLIQUITY);
+  return [x, y*ce + z*se, -y*se + z*ce];
+}
+/* ===== EPHEMERIS CORE END ===== */
+
+/* =========================================================================
+   APP
+   ========================================================================= */
+(function(){
+'use strict';
+
+const canvas = document.getElementById('view');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+
+/* ---------- bright-star catalogue (RA/Dec J2000, mag) ---------- */
+const BRIGHT_STARS = [
+  ['天狼星',101.287,-16.716,-1.46],['老人星',95.988,-52.696,-0.72],['大角星',213.915,19.182,-0.05],
+  ['织女星',279.234,38.784,0.03],['五车二',79.172,45.998,0.08],['参宿七',78.634,-8.202,0.13],
+  ['南河三',114.825,5.225,0.34],['水委一',24.429,-57.237,0.46],['参宿四',88.793,7.407,0.50],
+  ['马腹一',210.956,-60.373,0.61],['河鼓二',297.696,8.868,0.77],['毕宿五',68.980,16.509,0.85],
+  ['心宿二',247.352,-26.432,0.96],['角宿一',201.298,-11.161,0.98],['北河三',116.329,28.026,1.14],
+  ['北落师门',344.413,-29.622,1.16],['天津四',310.358,45.280,1.25],['轩辕十四',152.093,11.967,1.35],
+  ['北河二',113.650,31.888,1.58],['参宿五',81.283,6.350,1.64],['参宿一',85.190,-1.943,1.74],
+  ['参宿二',84.053,-1.202,1.69],['参宿三',83.002,-0.299,2.25],['玉衡',193.507,55.960,1.77],
+  ['天枢',165.932,61.751,1.79],['摇光',206.885,49.313,1.86],['北极星',37.955,89.264,1.98],
+  ['开阳',200.981,54.925,2.23],['天璇',165.460,56.382,2.37],['天玑',178.458,53.695,2.44],
+  ['天权',183.857,57.033,3.31]
+];
+
+/* ---------- state ---------- */
+const state = {
+  jd: julianFromDate(Date.now()),
+  playing: true,
+  speed: 1,              // days per real second (signed)
+  center: 'earth',
+  compressed: true,
+  showOrbits: true,
+  showTrails: true,
+  showLabels: true,
+  showStars: true,
+  showGrid: true,
+  showMoon: true,
+  showPluto: false,
+  trailDays: 800,
+  selected: 'earth',
+  sizeBoost: 1,
+  cam: { yaw: 0.75, pitch: 0.52, dist: 7.2, target: [0,0,0], fov: 48 }
+};
+
+/* ---------- trails ----------
+ * A trail point is stored ALREADY expressed in the reference frame, i.e.
+ *     point(t) = position(body, t) - position(centre, t)
+ * subtracting the centre body's position at the SAME instant t, never at "now".
+ * That is the definition of a coordinate in the centre body's frame, so once a
+ * point is recorded it stays put; only the tip grows. (Subtracting the centre's
+ * *current* position each frame would drag the whole curve along as the centre
+ * body orbits - the epicycles would swim instead of being drawn.) */
+const MAX_TRAIL_PTS = 1200;
+
+function trailReset(){
+  const t = {};
+  for (const id of allBodyIds()) t[id] = { arr: [], k: null };
+  return t;
+}
+function allBodyIds(){
+  return ['sun'].concat(PLANET_IDS).concat(['moon']);
+}
+let trailStore = trailReset();
+
+function trailStep(){ return Math.max(1e-4, state.trailDays / MAX_TRAIL_PTS); }
+
+/* record one frame point: p - c evaluated at the SAME instant t */
+function trailPush(st, id, k, step){
+  const t = k * step;
+  const p = bodyPosition(id, t);
+  const c = bodyPosition(state.center, t);
+  st.arr.push(p[0]-c[0], p[1]-c[1], p[2]-c[2]);
+}
+
+/* fill the trail backwards in time so the view is meaningful immediately */
+function refillTrail(st, id, kEnd, step){
+  st.arr.length = 0;
+  for (let k = kEnd - (MAX_TRAIL_PTS - 1); k <= kEnd; k++) trailPush(st, id, k, step);
+  st.k = kEnd;
+}
+function resetTrails(){
+  trailStore = trailReset();
+  const step = trailStep();
+  const kNow = Math.floor(state.jd / step);
+  for (const id of visibleIds()){
+    if (id === state.center) continue;
+    refillTrail(trailStore[id], id, kNow, step);
+  }
+  touchUI();                       // the trail data changed -> force a repaint
+}
+
+/* Sample times sit on a fixed absolute grid (k*step), so a given moment always
+   produces the same point no matter when it was recorded - the curve cannot
+   drift, and prefilled + live points join seamlessly. */
+function trailSample(){
+  const step = trailStep();
+  const k = Math.floor(state.jd / step);
+  for (const id of visibleIds()){
+    if (id === state.center) continue;
+    const st = trailStore[id] || (trailStore[id] = { arr: [], k: null });
+    if (st.k === null){ st.k = k; continue; }
+    if (k === st.k) continue;
+    // A jump bigger than the whole window means every stored point is stale;
+    // refill just this body (MAX_TRAIL_PTS positions) rather than all of them.
+    if (Math.abs(k - st.k) > MAX_TRAIL_PTS){ refillTrail(st, id, k, step); continue; }
+    const dir = k > st.k ? 1 : -1;
+    for (let kk = st.k + dir; dir > 0 ? kk <= k : kk >= k; kk += dir) trailPush(st, id, kk, step);
+    st.k = k;
+    const maxLen = MAX_TRAIL_PTS * 3;
+    if (st.arr.length > maxLen) st.arr.splice(0, st.arr.length - maxLen);
+  }
+}
+
+/* ---------- helpers ---------- */
+/* Date range the JS Date/ISO formatter can represent; beyond it toISOString()
+   throws RangeError, which would otherwise kill the animation loop. */
+const JD_MIN = 1721424.5;      // 0001-01-01
+const JD_MAX = 5373483.5;      // 9999-12-31
+function clampJd(jd){ return Math.min(JD_MAX, Math.max(JD_MIN, jd)); }
+/* parse a URL-hash number, falling back to a default instead of producing NaN */
+function num(v, lo, hi, dflt){
+  const x = parseFloat(v);
+  if (!isFinite(x)) return dflt;
+  return Math.min(hi, Math.max(lo, x));
+}
+
+function visibleIds(){
+  const ids = ['sun','mercury','venus','earth','mars','jupiter','saturn','uranus','neptune'];
+  if (state.showPluto) ids.push('pluto');
+  if (state.showMoon) ids.push('moon');
+  // The frame centre must always be part of the scene: without it computeScene()
+  // falls back to the Sun and silently renders a heliocentric view while the
+  // badge still claims otherwise, and lookups like frame.pos[centre] are undefined.
+  if (ids.indexOf(state.center) < 0) ids.push(state.center);
+  return ids;
+}
+function meta(id){ return BODY_META[id]; }
+function dist3(a,b){ return Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]); }
+
+function hexToRgb(h){
+  h = h.replace('#','');
+  return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
+}
+function shade(hex, f){          // f>0 lighten toward white, f<0 darken
+  const [r,g,b] = hexToRgb(hex);
+  const m = v => Math.max(0, Math.min(255, Math.round(f > 0 ? v + (255-v)*f : v*(1+f))));
+  return 'rgb(' + m(r) + ',' + m(g) + ',' + m(b) + ')';
+}
+function rgba(hex, a){
+  const [r,g,b] = hexToRgb(hex);
+  return 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+}
+
+/* distance compression for display: r[AUr] -> r' */
+const COMPRESS_P = 0.45;
+function compressScale(r){
+  if (!state.compressed) return 1;
+  if (r < 1e-12) return 1;
+  return Math.pow(r, COMPRESS_P) / r;
+}
+function toView(rel){
+  const r = Math.hypot(rel[0], rel[1], rel[2]);
+  const k = compressScale(r);
+  return [rel[0]*k, rel[1]*k, rel[2]*k];
+}
+function gridRadius(au){
+  return state.compressed ? Math.pow(au, COMPRESS_P) : au;
+}
+
+/* ---------- camera / projection ---------- */
+let camBasis = { right:[1,0,0], up:[0,1,0], fwd:[0,0,-1], pos:[0,0,0], f:600, cx:0, cy:0 };
+
+function updateCamera(){
+  const c = state.cam;
+  c.pitch = Math.max(-Math.PI/2 + 0.01, Math.min(Math.PI/2 - 0.01, c.pitch));
+  c.dist = Math.max(0.02, Math.min(4000, c.dist));
+  const cp = Math.cos(c.pitch), sp = Math.sin(c.pitch);
+  const cy = Math.cos(c.yaw),  sy = Math.sin(c.yaw);
+  const dir = [cp*cy, cp*sy, sp];                       // target -> camera
+  const pos = [ c.target[0] + dir[0]*c.dist, c.target[1] + dir[1]*c.dist, c.target[2] + dir[2]*c.dist ];
+  const fwd = [-dir[0], -dir[1], -dir[2]];
+  // right = normalize(fwd x ecliptic-north)
+  let right = [ fwd[1], -fwd[0], 0 ];
+  let rl = Math.hypot(right[0], right[1], right[2]);
+  if (rl < 1e-6){ right = [1,0,0]; rl = 1; }
+  right = [right[0]/rl, right[1]/rl, right[2]/rl];
+  const up = [
+    right[1]*fwd[2] - right[2]*fwd[1],
+    right[2]*fwd[0] - right[0]*fwd[2],
+    right[0]*fwd[1] - right[1]*fwd[0]
+  ];
+  const f = (0.5 * H) / Math.tan(c.fov * DEG / 2);
+  camBasis = { right, up, fwd, pos, f, cx: W/2, cy: H/2 };
+}
+
+/* project a scene-space point -> {x,y,z(depth),ok}.
+   NEAR keeps points that are almost in the camera plane from projecting to
+   enormous screen coordinates and painting stray lines across the view. */
+function nearPlane(){ return Math.max(0.01, state.cam.dist * 0.02); }
+function project(p){
+  const b = camBasis;
+  const dx = p[0]-b.pos[0], dy = p[1]-b.pos[1], dz = p[2]-b.pos[2];
+  const vz = dx*b.fwd[0] + dy*b.fwd[1] + dz*b.fwd[2];
+  const vx = dx*b.right[0] + dy*b.right[1] + dz*b.right[2];
+  const vy = dx*b.up[0] + dy*b.up[1] + dz*b.up[2];
+  if (vz < nearPlane()) return { ok:false, z:vz };
+  const s = b.f / vz;
+  return { ok:true, x:b.cx + vx*s, y:b.cy - vy*s, z:vz };
+}
+/* direction vector (infinitely far, e.g. stars) */
+function projectDir(d){
+  const b = camBasis;
+  const vz = d[0]*b.fwd[0] + d[1]*b.fwd[1] + d[2]*b.fwd[2];
+  if (vz < 0.02) return { ok:false };
+  const vx = d[0]*b.right[0] + d[1]*b.right[1] + d[2]*b.right[2];
+  const vy = d[0]*b.up[0] + d[1]*b.up[1] + d[2]*b.up[2];
+  const s = b.f / vz;
+  return { ok:true, x:b.cx + vx*s, y:b.cy - vy*s, z:vz };
+}
+
+/* ---------- resize ---------- */
+function resize(){
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  const w = canvas.clientWidth  || window.innerWidth;
+  const h = canvas.clientHeight || window.innerHeight;
+  // Assigning canvas.width/height clears the bitmap, so ignore no-op resize
+  // events - otherwise the idle frame-skip would leave a blank canvas.
+  if (w === W && h === H && canvas.width === Math.round(w * DPR)) return;
+  W = w; H = h;
+  canvas.width  = Math.round(W * DPR);
+  canvas.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  touchUI();
+}
+window.addEventListener('resize', resize);
+if (window.ResizeObserver) new ResizeObserver(resize).observe(canvas);
+
+/* ---------- scene computation ---------- */
+let frame = { pos:{}, rel:{}, view:{}, screen:{}, centerPos:[0,0,0] };
+
+function computeScene(){
+  const ids = visibleIds();
+  const pos = {};
+  for (const id of ids) pos[id] = bodyPosition(id, state.jd);
+  const cp = pos[state.center] || [0,0,0];
+  const rel = {}, view = {}, screen = {};
+  for (const id of ids){
+    rel[id] = [pos[id][0]-cp[0], pos[id][1]-cp[1], pos[id][2]-cp[2]];
+    view[id] = toView(rel[id]);
+    screen[id] = project(view[id]);
+  }
+  frame = { ids, pos, rel, view, screen, centerPos: cp };
+}
+
+/* ---------- drawing ---------- */
+const starField = (function(){
+  const out = [];
+  for (const s of BRIGHT_STARS) out.push({ v: raDecToEcliptic(s[1], s[2]), mag: s[3], name: s[0] });
+  let seed = 20240601 >>> 0;
+  const rnd = () => {                       // mulberry32
+    seed = (seed + 0x6D2B79F5) >>> 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  for (let i = 0; i < 900; i++){
+    const u = rnd()*2 - 1, th = rnd()*Math.PI*2, s = Math.sqrt(1-u*u);
+    out.push({ v:[s*Math.cos(th), s*Math.sin(th), u], mag: 3.4 + rnd()*3.6, name:null });
+  }
+  return out;
+})();
+
+function drawStars(){
+  ctx.save();
+  for (const st of starField){
+    const p = projectDir(st.v);
+    if (!p.ok) continue;
+    if (p.x < -20 || p.x > W+20 || p.y < -20 || p.y > H+20) continue;
+    const r = Math.max(0.35, 1.35 - st.mag*0.16) * (st.name ? 1.5 : 1);
+    ctx.globalAlpha = st.name ? 0.95 : Math.max(0.16, 0.62 - st.mag*0.11);
+    ctx.fillStyle = st.name ? '#eaf2ff' : '#cfe0ff';
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI*2); ctx.fill();
+    if (st.name && r > 1.2){
+      ctx.globalAlpha = 0.5;
+      ctx.beginPath(); ctx.arc(p.x, p.y, r*2.2, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba(160,200,255,.10)'; ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+function drawGrid(){
+  const rings = [0.4, 1, 2, 3, 5, 10, 20, 30, 40, 50];
+  ctx.save();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(120,170,255,.13)';
+  for (const au of rings){
+    const r = gridRadius(au);
+    if (r < 0.02) continue;
+    let started = false;
+    ctx.beginPath();
+    for (let i = 0; i <= 180; i++){
+      const a = i/180 * Math.PI*2;
+      const p = project([Math.cos(a)*r, Math.sin(a)*r, 0]);
+      if (!p.ok){ started = false; continue; }
+      if (!started){ ctx.moveTo(p.x, p.y); started = true; } else ctx.lineTo(p.x, p.y);
+    }
+    ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(120,170,255,.08)';
+  for (let k = 0; k < 12; k++){
+    const a = k/12*Math.PI*2;
+    const outer = gridRadius(50);
+    const p0 = project([0,0,0]), p1 = project([Math.cos(a)*outer, Math.sin(a)*outer, 0]);
+    if (!p0.ok || !p1.ok) continue;
+    ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawOrbits(){
+  const centerPos = frame.centerPos;
+  for (const id of frame.ids){
+    if (id === state.center) continue;
+    const pts = orbitPoints(id, state.jd, 200);
+    if (!pts.length) continue;
+    const col = meta(id).color;
+    ctx.save();
+    ctx.lineWidth = 1.1;
+    let prev = null;
+    for (let i = 0; i < pts.length; i++){
+      const wp = id === 'moon'
+        ? [frame.pos.earth[0] + pts[i][0], frame.pos.earth[1] + pts[i][1], frame.pos.earth[2] + pts[i][2]]
+        : pts[i];
+      const rel = [wp[0]-centerPos[0], wp[1]-centerPos[1], wp[2]-centerPos[2]];
+      const p = project(toView(rel));
+      if (!p.ok){ prev = null; continue; }
+      if (prev){
+        const depth = Math.min(1, Math.max(0, (p.z + prev.z) / (2 * state.cam.dist)));
+        ctx.strokeStyle = rgba(col, 0.16 + 0.34*(1-depth));
+        ctx.beginPath(); ctx.moveTo(prev.x, prev.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+      }
+      prev = p;
+    }
+    ctx.restore();
+  }
+}
+
+function drawTrails(){
+  for (const id of frame.ids){
+    if (id === state.center) continue;
+    const st = trailStore[id];
+    if (!st || st.arr.length < 6) continue;
+    const col = meta(id).color;
+    const a = st.arr, n = a.length/3;
+    ctx.save();
+    ctx.lineWidth = 1.4;
+    ctx.lineJoin = 'round';
+    let prev = null, curChunk = -1, pathOpen = false;
+    for (let i = 0; i < n; i++){
+      // points are already in the reference frame - no re-centring here
+      const p = project(toView([a[i*3], a[i*3+1], a[i*3+2]]));
+      if (!p.ok){
+        if (pathOpen){ ctx.stroke(); pathOpen = false; }
+        prev = null; curChunk = -1;
+        continue;
+      }
+      if (prev){
+        const age = i / (n-1);                    // 0 = oldest, 1 = newest
+        const chunk = (i / 24) | 0;
+        if (chunk !== curChunk || !pathOpen){
+          if (pathOpen) ctx.stroke();
+          ctx.strokeStyle = rgba(col, 0.05 + 0.62*age);
+          ctx.beginPath(); ctx.moveTo(prev.x, prev.y);
+          pathOpen = true; curChunk = chunk;
+        }
+        ctx.lineTo(p.x, p.y);
+      }
+      prev = p;
+    }
+    // live tip: join the newest recorded point to where the body is right now,
+    // so the curve stays attached to it between samples
+    const live = frame.screen[id];
+    if (pathOpen && live && live.ok) ctx.lineTo(live.x, live.y);
+    if (pathOpen) ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function bodyPixelRadius(id){
+  const base = {
+    sun: 11, mercury: 3.0, venus: 4.2, earth: 4.4, moon: 2.6,
+    mars: 3.4, jupiter: 8.2, saturn: 7.2, uranus: 5.6, neptune: 5.4, pluto: 2.6
+  }[id] || 3;
+  const zoom = Math.max(0.6, Math.min(2.2, Math.pow(7.2 / state.cam.dist, 0.22)));
+  return base * zoom * state.sizeBoost;
+}
+
+function drawBody(id){
+  const s = frame.screen[id];
+  if (!s || !s.ok) return;
+  const m = meta(id);
+  const R = bodyPixelRadius(id);
+  if (s.x < -80 || s.x > W+80 || s.y < -80 || s.y > H+80) return;
+
+  // light direction (from the Sun), in screen space
+  let lx = 0, ly = 0, haveLight = false;
+  if (id !== 'sun'){
+    const ss = frame.screen.sun;
+    if (ss && ss.ok){
+      const dx = ss.x - s.x, dy = ss.y - s.y, d = Math.hypot(dx, dy);
+      if (d > 1e-3){ lx = dx/d; ly = dy/d; haveLight = true; }
+    }
+  }
+
+  // Sun glow
+  if (id === 'sun'){
+    const g = ctx.createRadialGradient(s.x, s.y, R*0.4, s.x, s.y, R*7);
+    g.addColorStop(0,   'rgba(255,236,170,.85)');
+    g.addColorStop(0.14,'rgba(255,200,80,.42)');
+    g.addColorStop(0.42,'rgba(255,150,40,.12)');
+    g.addColorStop(1,   'rgba(255,120,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(s.x, s.y, R*7, 0, Math.PI*2); ctx.fill();
+  }
+
+  const rings = (id === 'saturn');
+  if (rings) drawSaturnRings(id, R, s.z, 'far');   // back half passes behind the disc
+
+  const ox = haveLight ? lx*R*0.38 : 0, oy = haveLight ? ly*R*0.38 : 0;
+  const g = ctx.createRadialGradient(s.x + ox, s.y + oy, R*0.06, s.x, s.y, R*1.05);
+  g.addColorStop(0, shade(m.color, 0.55));
+  g.addColorStop(0.55, m.color);
+  g.addColorStop(1, shade(m.color, -0.55));
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(s.x, s.y, R, 0, Math.PI*2); ctx.fill();
+
+  if (rings) drawSaturnRings(id, R, s.z, 'near');  // front half passes over it
+
+  if (state.selected === id){
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,.85)';
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.arc(s.x, s.y, R + 7 + Math.sin(performance.now()/380)*1.2, 0, Math.PI*2); ctx.stroke();
+    ctx.restore();
+  }
+  if (state.center === id){
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,212,94,.95)';
+    ctx.lineWidth = 1.3;
+    ctx.beginPath(); ctx.arc(s.x, s.y, R + 4, 0, Math.PI*2); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(s.x - R - 11, s.y); ctx.lineTo(s.x - R - 5, s.y);
+    ctx.moveTo(s.x + R + 5, s.y);  ctx.lineTo(s.x + R + 11, s.y);
+    ctx.moveTo(s.x, s.y - R - 11); ctx.lineTo(s.x, s.y - R - 5);
+    ctx.moveTo(s.x, s.y + R + 5);  ctx.lineTo(s.x, s.y + R + 11);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+/* ---------- Saturn's rings ----------
+ * Real ring boundaries in km from the planet's centre: C ring, B ring, the
+ * Cassini division (left empty) and the A ring. Scaled to the drawn planet
+ * radius by km / radiusKm, and to the screen by pixels -> world units at
+ * Saturn's depth (using a pixel radius as a world offset is what used to throw
+ * the rings thousands of pixels off screen). */
+const SATURN_RINGS = [
+  { r0:  74658, r1:  91975, alpha: 0.26 },   // C ring - faint, inner
+  { r0:  91975, r1: 117507, alpha: 0.46 },   // B ring - brightest, widest
+  { r0: 122170, r1: 136775, alpha: 0.32 }    // A ring - beyond the Cassini division
+];
+const SATURN_POLE = raDecToEcliptic(40.589, 83.537);
+const SATURN_RING_AXES = (function(){
+  const cr = (a,b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+  const u = Math.abs(SATURN_POLE[0]) > 0.9 ? [0,1,0] : [1,0,0];
+  let e1 = cr(SATURN_POLE, u);
+  const l = Math.hypot(e1[0], e1[1], e1[2]);
+  e1 = [e1[0]/l, e1[1]/l, e1[2]/l];
+  return [e1, cr(SATURN_POLE, e1)];
+})();
+
+/* half = 'far' (behind the planet) is drawn before the disc, 'near' after it */
+function drawSaturnRings(id, R, depth, half){
+  const vpos = frame.view[id];
+  const e1 = SATURN_RING_AXES[0], e2 = SATURN_RING_AXES[1], fwd = camBasis.fwd;
+  const pxToWorld = depth / camBasis.f;        // world units per screen pixel here
+  const meanKm = meta('saturn').radiusKm;
+  const d1 = e1[0]*fwd[0] + e1[1]*fwd[1] + e1[2]*fwd[2];
+  const d2 = e2[0]*fwd[0] + e2[1]*fwd[1] + e2[2]*fwd[2];
+  const phi = Math.atan2(d2, d1);              // ring direction of maximum depth
+  const a0 = (half === 'far' ? phi - Math.PI/2 : phi + Math.PI/2);
+  const a1 = a0 + Math.PI;
+  const N = 48;
+  const pt = (a, km) => {
+    const rr = (km / meanKm) * R * pxToWorld;
+    return project([
+      vpos[0] + (Math.cos(a)*e1[0] + Math.sin(a)*e2[0]) * rr,
+      vpos[1] + (Math.cos(a)*e1[1] + Math.sin(a)*e2[1]) * rr,
+      vpos[2] + (Math.cos(a)*e1[2] + Math.sin(a)*e2[2]) * rr
+    ]);
+  };
+  ctx.save();
+  for (const ring of SATURN_RINGS){
+    ctx.beginPath();
+    let ok = true;
+    for (let i = 0; i <= N; i++){
+      const p = pt(a0 + (a1-a0)*i/N, ring.r1);
+      if (!p.ok){ ok = false; break; }
+      if (i) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y);
+    }
+    if (ok) for (let i = N; i >= 0; i--){
+      const p = pt(a0 + (a1-a0)*i/N, ring.r0);
+      if (!p.ok){ ok = false; break; }
+      ctx.lineTo(p.x, p.y);
+    }
+    if (!ok) continue;                          // ring crosses the near plane
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(228,208,150,' + ring.alpha + ')';
+    ctx.fill('evenodd');                        // annulus, not a stroked circle
+  }
+  ctx.restore();
+}
+
+function drawLabels(){
+  ctx.save();
+  ctx.font = '12px system-ui,"Microsoft YaHei",sans-serif';
+  ctx.textBaseline = 'middle';
+  const placed = [];                       // simple de-clutter: skip overlapping labels
+  for (const id of frame.ids){
+    const s = frame.screen[id];
+    if (!s || !s.ok) continue;
+    const R = bodyPixelRadius(id);
+    const label = meta(id).name;
+    const x = s.x + R + 7, y = s.y;
+    const w = ctx.measureText(label).width;
+    const box = [x-4, y-9, x+w+4, y+9];
+    if (placed.some(b => !(box[2] < b[0] || box[0] > b[2] || box[3] < b[1] || box[1] > b[3]))) continue;
+    placed.push(box);
+    ctx.fillStyle = 'rgba(4,8,16,.55)';
+    ctx.fillRect(box[0], box[1], box[2]-box[0], box[3]-box[1]);
+    ctx.fillStyle = state.center === id ? '#ffd45e' : 'rgba(226,236,250,.92)';
+    ctx.fillText(label, x, y);
+  }
+  ctx.restore();
+}
+
+function drawCenterMark(){
+  const p = project([0,0,0]);
+  if (!p.ok) return;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,212,94,.9)';
+  ctx.lineWidth = 1.2;
+  const s = 16;
+  ctx.beginPath();
+  ctx.moveTo(p.x-s, p.y); ctx.lineTo(p.x-5, p.y);
+  ctx.moveTo(p.x+5, p.y); ctx.lineTo(p.x+s, p.y);
+  ctx.moveTo(p.x, p.y-s); ctx.lineTo(p.x, p.y-5);
+  ctx.moveTo(p.x, p.y+5); ctx.lineTo(p.x, p.y+s);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,212,94,.9)';
+  ctx.font = '12px system-ui,"Microsoft YaHei",sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('参考系中心 · ' + meta(state.center).name, p.x, p.y + s + 16);
+  ctx.restore();
+}
+
+function draw(){
+  drawCount++;
+  updateCamera();
+  ctx.clearRect(0, 0, W, H);
+  // subtle vignette background
+  const bg = ctx.createRadialGradient(W*0.5, H*0.5, 0, W*0.5, H*0.5, Math.max(W,H)*0.75);
+  bg.addColorStop(0, '#070c18');
+  bg.addColorStop(1, '#020306');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  if (state.showStars) drawStars();
+  if (state.showGrid)  drawGrid();
+  if (state.showOrbits) drawOrbits();
+  if (state.showTrails) drawTrails();
+
+  // bodies far -> near
+  const order = frame.ids.slice().filter(id => frame.screen[id] && frame.screen[id].ok);
+  order.sort((a,b) => frame.screen[b].z - frame.screen[a].z);
+  for (const id of order) drawBody(id);
+
+  if (state.showLabels) drawLabels();
+  drawCenterMark();
+}
+
+/* ---------- simulation loop ---------- */
+let lastT = performance.now();
+let drawCount = 0;                  // frames actually rasterised (see '#debug')
+let uiEpoch = 0;                    // bumped whenever the picture must be redrawn
+let lastSig = null;
+function touchUI(){ uiEpoch++; }
+function renderSig(){
+  const c = state.cam;
+  return state.jd + '|' + c.yaw + ',' + c.pitch + ',' + c.dist + ',' + c.target.join(',') +
+         '|' + state.center + '|' + state.selected + '|' + uiEpoch + '|' + W + 'x' + H;
+}
+function tick(now){
+  requestAnimationFrame(tick);      // schedule first: one bad frame must not stop the clock
+  const dt = Math.min(0.25, Math.max(0, (now - lastT) / 1000));
+  lastT = now;
+  if (state.playing && state.speed !== 0){
+    state.jd = clampJd(state.jd + dt * state.speed);
+    trailSample();
+    updateClockText();
+  }
+  // nothing moved and nothing changed -> keep the previous frame instead of
+  // re-projecting ~16k points and re-rasterising 60 times a second
+  const sig = renderSig();
+  if (sig === lastSig) return;
+  lastSig = sig;
+  computeScene();
+  draw();
+}
+
+/* ---------- UI ---------- */
+const $ = id => document.getElementById(id);
+const HASH = new URLSearchParams(location.hash.replace(/^#/, ''));
+
+const els = {
+  dateText: $('dateText'), jdText: $('jdText'),
+  btnPlay: $('btnPlay'), btnReverse: $('btnReverse'),
+  speedSlider: $('speedSlider'), speedText: $('speedText'),
+  presets: $('presets'), dateInput: $('dateInput'),
+  btnGoto: $('btnGoto'), btnNow: $('btnNow'),
+  centerSel: $('centerSel'), centerNote: $('centerNote'),
+  bodyList: $('bodyList'), detail: $('detail'), detailTitle: $('detailTitle'),
+  trailRange: $('trailRange'), trailText: $('trailText'),
+  sizeRange: $('sizeRange'), frameBadge: $('frameBadge'), srcNote: $('srcNote')
+};
+
+els.srcNote.innerHTML = '星历：JPL 近似开普勒根数（1800–2050 AD，行星精度约 1′）+ Meeus 月球理论（约 10″）。'
+
+/* presets: label -> days per second */
+const PRESETS = [
+  ['实时', 1/86400], ['1分/秒', 1/1440], ['1时/秒', 1/24],
+  ['1天/秒', 1], ['1周/秒', 7], ['1月/秒', 30.4375], ['1年/秒', 365.25]
+];
+PRESETS.forEach(([label, v]) => {
+  const b = document.createElement('button');
+  b.textContent = label;
+  b.onclick = () => { state.speed = Math.sign(state.speed || 1) * v; syncSpeedUI(); };
+  els.presets.appendChild(b);
+});
+
+const ALL_CENTERS = ['sun'].concat(PLANET_IDS).concat(['moon']);
+for (const id of ALL_CENTERS){
+  const o = document.createElement('option');
+  o.value = id; o.textContent = meta(id).name;
+  els.centerSel.appendChild(o);
+}
+
+function fmtSpeed(v){
+  const a = Math.abs(v);
+  const sign = v < 0 ? '◀ ' : '';
+  if (a < 1/86400 * 1.5) return sign + (a*86400).toFixed(2) + ' 秒/秒';
+  if (a < 1/24)   return sign + (a*1440).toFixed(2) + ' 分/秒';
+  if (a < 1)      return sign + (a*24).toFixed(2) + ' 时/秒';
+  if (a < 30)     return sign + a.toFixed(2) + ' 天/秒';
+  if (a < 365)    return sign + (a/30.4375).toFixed(2) + ' 月/秒';
+  return sign + (a/365.25).toFixed(2) + ' 年/秒';
+}
+function syncSpeedUI(){
+  els.speedText.textContent = fmtSpeed(state.speed);
+  els.btnReverse.classList.toggle('on', state.speed < 0);
+  const mag = Math.max(1e-5, Math.abs(state.speed));
+  els.speedSlider.value = Math.log10(mag);
+}
+let lastClockStamp = '';
+function updateClockText(){
+  const d = dateFromJulian(state.jd);
+  if (isNaN(d.getTime())){                 // never let a bad date throw out of here
+    els.dateText.textContent = '—';
+    els.jdText.textContent = '—';
+    return;
+  }
+  const iso = d.toISOString();
+  const stamp = iso.slice(0,19) + '|' + state.center;
+  if (stamp === lastClockStamp) return;    // nothing on screen would change
+  lastClockStamp = stamp;
+  els.dateText.textContent = iso.slice(0,10) + '  ' + iso.slice(11,19) + ' UTC';
+  const T = centuryTT(state.jd);
+  const outOfRange = state.jd < 2378497 || state.jd > 2469808;   // 1800..2050
+  els.jdText.innerHTML = 'JD ' + state.jd.toFixed(4) + '   T=' + T.toFixed(4) + ' 世纪' +
+    (outOfRange ? '  <span style="color:#ff9a6a">⚠ 超出 1800–2050 高精度区间</span>' : '');
+  if (document.activeElement !== els.dateInput) els.dateInput.value = iso.slice(0,16);
+  els.frameBadge.textContent = '参考系：' + meta(state.center).name + '中心';
+}
+
+els.btnPlay.onclick = () => {
+  state.playing = !state.playing;
+  els.btnPlay.textContent = state.playing ? '⏸' : '▶';
+  els.btnPlay.classList.toggle('on', !state.playing);
+};
+els.btnReverse.onclick = () => { state.speed = -state.speed; syncSpeedUI(); };
+els.speedSlider.oninput = e => {
+  const mag = Math.pow(10, parseFloat(e.target.value));
+  const sign = state.speed < 0 ? -1 : 1;
+  state.speed = sign * mag;
+  els.speedText.textContent = fmtSpeed(state.speed);
+  els.btnReverse.classList.toggle('on', state.speed < 0);
+};
+
+function setCenter(id){
+  state.center = id;
+  els.centerSel.value = id;
+  state.cam.target = [0,0,0];
+  resetTrails();
+  if (id !== 'sun' && state.cam.dist > 40) state.cam.dist = 7.2;
+  document.querySelectorAll('[data-center]').forEach(b => b.classList.toggle('on', b.dataset.center === id));
+  computeScene();
+  fitView();
+  updateCenterNote();
+  toast('参考系中心 → ' + meta(id).name);
+  updateClockText();
+  refreshList();
+  refreshDetail();
+}
+/* the empty tagline under the centre picker: say what this frame is good for */
+const CENTER_NOTES = {
+  sun:     '日心参考系：行星沿近似椭圆轨道同向公转，是"真实轨道"的标准视角。',
+  earth:   '地心参考系：行星轨迹呈现本轮与逆行圈——轨道线仍按日心位置瞬时平移，只有轨迹表示"在地球看它走过哪里"。',
+  moon:    '以月球为中心：可观察地球与太阳相对月球的几何关系。',
+  jupiter: '以木星为中心：内行星与太阳的视运动在一个会合周期内完成闭合。'
+};
+function updateCenterNote(){
+  els.centerNote.textContent = CENTER_NOTES[state.center] ||
+    ('以' + meta(state.center).name + '为中心：其余天体按该天体的视角重新定位。');
+}
+els.centerSel.onchange = e => setCenter(e.target.value);
+function populateCenterButtons(){
+  document.querySelectorAll('[data-center]').forEach(b => {
+    b.onclick = () => setCenter(b.dataset.center);
+    b.classList.toggle('on', b.dataset.center === state.center);
+  });
+}
+
+const TOGGLES = [
+  ['tglCompress','compressed','开启','关闭'],
+  ['tglOrbits','showOrbits','开','关'],
+  ['tglTrails','showTrails','开','关'],
+  ['tglLabels','showLabels','开','关'],
+  ['tglStars','showStars','开','关'],
+  ['tglGrid','showGrid','开','关'],
+  ['tglMoon','showMoon','开','关'],
+  ['tglPluto','showPluto','开','关']
+];
+function syncToggles(){
+  for (const [id, key, t, f] of TOGGLES){
+    const el = $(id);
+    el.classList.toggle('on', !!state[key]);
+    el.textContent = state[key] ? t : f;
+  }
+  els.trailRange.value = state.trailDays;
+  els.trailText.textContent = state.trailDays + ' 天';
+  els.sizeRange.value = state.sizeBoost;
+  touchUI();
+}
+for (const [id, key] of TOGGLES){
+  $(id).onclick = () => {
+    state[key] = !state[key];
+    if (key === 'showMoon' || key === 'showPluto'){
+      resetTrails();
+      // the visible set changed: rebuild the list and keep the selection valid
+      if (visibleIds().indexOf(state.selected) < 0) state.selected = state.center;
+      buildBodyList();
+      refreshDetail();
+    }
+    syncToggles();
+  };
+}
+
+/* URL hash: #center=earth&trail=800&date=2024-11-01&speed=0&compress=1 ... */
+function applyHash(){
+  const h = HASH;
+  if (h.has('center') && ALL_CENTERS.includes(h.get('center'))) state.center = h.get('center');
+  if (h.has('date')){
+    const raw = h.get('date');
+    const t = Date.parse(raw + (raw.length <= 10 ? 'T00:00:00Z' : ''));
+    if (!isNaN(t)) state.jd = clampJd(julianFromDate(t));
+  }
+  if (h.has('jd')) state.jd = clampJd(num(h.get('jd'), JD_MIN, JD_MAX, state.jd));
+  if (h.has('trail')) state.trailDays = num(h.get('trail'), 1, 100000, state.trailDays);
+  if (h.has('speed')) state.speed = num(h.get('speed'), -1e6, 1e6, state.speed);
+  if (h.has('size')) state.sizeBoost = num(h.get('size'), 0.2, 10, state.sizeBoost);
+  if (h.has('compress')) state.compressed = h.get('compress') !== '0';
+  if (h.has('yaw')) state.cam.yaw = num(h.get('yaw'), -1e4, 1e4, state.cam.yaw);
+  if (h.has('pitch')) state.cam.pitch = num(h.get('pitch'), -1.5, 1.5, state.cam.pitch);
+  if (h.has('dist')) state.cam.dist = num(h.get('dist'), 0.02, 4000, state.cam.dist);
+  if (h.has('pause')) state.playing = false;
+  for (const [id, key] of TOGGLES){
+    if (h.has(key)) state[key] = h.get(key) !== '0';
+  }
+}
+
+els.trailRange.oninput = e => {
+  state.trailDays = parseFloat(e.target.value);
+  els.trailText.textContent = state.trailDays + ' 天';
+  resetTrails();
+};
+els.sizeRange.oninput = e => { state.sizeBoost = parseFloat(e.target.value); touchUI(); };
+
+function setJd(jd){                       // user-initiated time jump: clamp + rebuild
+  state.jd = clampJd(jd);
+  resetTrails();
+  updateClockText();
+}
+els.btnGoto.onclick = () => {
+  const raw = els.dateInput.value;
+  if (!raw) return;
+  const t = Date.parse(raw.length <= 16 ? raw + ':00Z' : raw + 'Z');
+  if (isNaN(t)){ toast('无法识别该日期'); return; }
+  setJd(julianFromDate(t));
+};
+els.btnNow.onclick = () => setJd(julianFromDate(Date.now()));
+
+function fitView(){
+  let maxR = 0.4;
+  for (const id of frame.ids){
+    const v = frame.view[id];
+    if (!v) continue;
+    maxR = Math.max(maxR, Math.hypot(v[0], v[1], v[2]));
+  }
+  state.cam.dist = Math.max(0.35, maxR / Math.tan(state.cam.fov*DEG/2) * 1.06);
+}
+$('btnFit').onclick = () => { fitView(); toast('自动取景'); };
+$('btnTop').onclick = () => { state.cam.pitch = Math.PI/2 - 0.02; state.cam.yaw = -Math.PI/2; };
+$('btnSide').onclick = () => { state.cam.pitch = 0.06; state.cam.yaw = 0.6; };
+$('btnResetView').onclick = () => {
+  state.cam.yaw = 0.75; state.cam.pitch = 0.52; state.cam.target = [0,0,0]; fitView();
+};
+$('btnPanels').onclick = () => document.body.classList.toggle('panels-open');
+
+function toast(msg){
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.classList.remove('show'), 1300);
+}
+
+/* ---------- body list & detail ---------- */
+function buildBodyList(){
+  els.bodyList.innerHTML = '';
+  for (const id of visibleIds()){
+    const m = meta(id);
+    const row = document.createElement('div');
+    row.className = 'bodyRow';
+    row.dataset.id = id;
+    row.innerHTML = '<span class="dot" style="color:' + m.color + '"></span>' +
+      '<span class="nm">' + m.name + '</span>' +
+      '<span class="ds mono"></span>' +
+      '<span class="pin" title="设为中心">◎</span>';
+    row.onclick = e => {
+      if (e.target.classList.contains('pin')) { setCenter(id); return; }
+      state.selected = id;
+      refreshList();
+      refreshDetail();
+    };
+    els.bodyList.appendChild(row);
+  }
+  refreshList();
+}
+function refreshList(){
+  const rows = els.bodyList.children;
+  for (const row of rows){
+    const id = row.dataset.id;
+    row.classList.toggle('sel', state.selected === id);
+    row.classList.toggle('center', state.center === id);
+    const d = frame.rel[id] ? Math.hypot(...frame.rel[id]) : 0;
+    row.querySelector('.ds').textContent = id === state.center ? '中心' : fmtDist(d).short;
+  }
+}
+function fmtDist(au){
+  const km = au * AU_KM;
+  const short = au < 0.01 ? (km/1e4).toFixed(2) + '万km' : au.toFixed(3) + 'AU';
+  return { short, km };
+}
+function fmtKm(km){
+  if (km < 1e4) return km.toFixed(0) + ' km';
+  if (km < 1e8) return (km/1e4).toFixed(2) + ' 万 km';
+  return (km/1e8).toFixed(4) + ' 亿 km';
+}
+function fmtLight(km){
+  const s = km / C_KM_S;
+  if (s < 90) return s.toFixed(1) + ' 秒';
+  if (s < 5400) return (s/60).toFixed(1) + ' 分';
+  return (s/3600).toFixed(2) + ' 小时';
+}
+function refreshDetail(){
+  const id = state.selected;
+  const m = meta(id);
+  const p = frame.pos[id];
+  if (!p){                                  // hidden body: say so instead of throwing
+    els.detailTitle.textContent = m.name + ' · 详情';
+    els.detail.innerHTML = '<div class="tagline">该天体当前未显示在视图中。</div>';
+    return;
+  }
+  const ge = frame.pos.earth;
+  const helio = Math.hypot(p[0], p[1], p[2]);
+  const fromC = frame.rel[id] ? Math.hypot(...frame.rel[id]) : 0;
+  const fromE = dist3(p, ge);
+  const v = bodyVelocity(id, state.jd);
+  const spd = Math.hypot(v[0], v[1], v[2]) * AU_KM / 86400;
+  const [lon, lat] = eclipticLonLat(p);
+  const gvec = [p[0]-ge[0], p[1]-ge[1], p[2]-ge[2]];
+  const [glon, glat] = id === 'earth' ? [NaN, NaN] : eclipticLonLat(gvec);
+
+  els.detailTitle.textContent = m.name + ' · 详情';
+  const rows = [];
+  const push = (k, val, tip) => rows.push('<div class="dt"' + (tip ? ' title="' + tip + '"' : '') +
+    '><span>' + k + '</span><span class="mono">' + val + '</span></div>');
+  push('日心距', helio.toFixed(4) + ' AU · ' + fmtKm(helio*AU_KM));
+  push('距' + meta(state.center).name + '中心', fromC.toFixed(4) + ' AU · ' + fmtKm(fromC*AU_KM));
+  if (state.center !== 'sun') push('↳ 光行时', fmtLight(fromC*AU_KM));
+  push('距地球', fromE.toFixed(4) + ' AU · ' + fmtKm(fromE*AU_KM));
+  push('↳ 光行时', fmtLight(fromE*AU_KM));
+  push('日心速度', spd.toFixed(2) + ' km/s', '（相对太阳，非相对参考系中心）');
+  if (id !== 'sun') push('日心黄经 λ', lon.toFixed(3) + '°');
+  if (id !== 'sun') push('日心黄纬 β', lat.toFixed(3) + '°');
+  if (!isNaN(glon)) push('地心黄经 λ', glon.toFixed(3) + '°');
+  if (!isNaN(glat)) push('地心黄纬 β', glat.toFixed(3) + '°');
+  if (id !== 'sun' && id !== 'moon'){
+    const q = elementsAt(state.jd, ELEMENTS[id]);
+    push('半长轴 a', q.a.toFixed(6) + ' AU');
+    push('偏心率 e', q.e.toFixed(5));
+    push('轨道倾角 i', q.I.toFixed(3) + '°');
+    push('公转周期', Math.pow(q.a, 1.5).toFixed(4) + ' 年');
+    const M = ((q.L - q.wbar) % 360 + 360) % 360;
+    push('平近点角 M', M.toFixed(2) + '°');
+  }
+  if (id === 'moon'){
+    const mg = moonGeocentric(state.jd);
+    push('地心距', mg[3].toFixed(0) + ' km');
+    push('公转周期', '27.32 天（恒星月）');
+    push('朔望月', '29.53 天');
+  }
+  if (id === 'sun') push('半径', '696,340 km');
+  else push('半径', m.radiusKm.toLocaleString('en-US') + ' km');
+  els.detail.innerHTML = rows.join('');
+}
+
+/* ---------- camera input ---------- */
+let drag = null;
+let activePointers = 0;
+canvas.addEventListener('pointerdown', e => {
+  activePointers++;
+  if (e.pointerType === 'touch' && activePointers > 1){ drag = null; return; }  // pinch, not rotate
+  canvas.setPointerCapture(e.pointerId);
+  drag = { x:e.clientX, y:e.clientY, moved:0, pan:(e.button === 2 || e.shiftKey) };
+  canvas.classList.add('dragging');
+});
+canvas.addEventListener('pointermove', e => {
+  if (!drag || !e.isPrimary) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  drag.x = e.clientX; drag.y = e.clientY;
+  drag.moved += Math.abs(dx) + Math.abs(dy);
+  if (drag.pan){
+    const b = camBasis;
+    const k = state.cam.dist / b.f;
+    for (let i = 0; i < 3; i++){
+      state.cam.target[i] += (-dx * b.right[i] + dy * b.up[i]) * k;
+    }
+  } else {
+    state.cam.yaw   -= dx * 0.0055;
+    state.cam.pitch += dy * 0.0055;
+  }
+});
+function endPointer(){
+  activePointers = Math.max(0, activePointers - 1);
+  canvas.classList.remove('dragging');
+  drag = null;
+}
+canvas.addEventListener('pointerup', e => {
+  const wasClick = drag && drag.moved < 6 && !drag.pan;
+  endPointer();
+  if (wasClick) pick(e.clientX, e.clientY);
+});
+canvas.addEventListener('pointercancel', endPointer);
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  state.cam.dist *= Math.exp(Math.sign(e.deltaY) * 0.11);
+}, { passive:false });
+
+/* nearest body within its own hit radius */
+function pickBody(mx, my, slack){
+  let best = null, bestD = 0;
+  for (const id of frame.ids){
+    const s = frame.screen[id];
+    if (!s || !s.ok) continue;
+    const d = Math.hypot(s.x - mx, s.y - my);
+    const lim = bodyPixelRadius(id) + slack;
+    if (d <= lim && (best === null || d < bestD)){ bestD = d; best = id; }
+  }
+  return best;
+}
+function pick(mx, my){
+  const best = pickBody(mx, my, 8);
+  if (best){
+    state.selected = best;
+    refreshList(); refreshDetail();
+  }
+}
+canvas.addEventListener('dblclick', e => {
+  const best = pickBody(e.clientX, e.clientY, 10);
+  if (best) setCenter(best);
+});
+
+/* touch: pinch zoom */
+let pinch = null;
+canvas.addEventListener('touchstart', e => {
+  if (e.touches.length === 2){
+    const [a,b] = e.touches;
+    pinch = { d: Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY), dist: state.cam.dist };
+  }
+}, { passive:true });
+canvas.addEventListener('touchmove', e => {
+  if (pinch && e.touches.length === 2){
+    const [a,b] = e.touches;
+    const d = Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
+    state.cam.dist = pinch.dist * pinch.d / Math.max(1, d);
+  }
+}, { passive:true });
+canvas.addEventListener('touchend', () => { pinch = null; }, { passive:true });
+
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  const k = e.key;
+  if (k === ' '){ e.preventDefault(); els.btnPlay.click(); }
+  else if (k === 'ArrowRight'){ setJd(state.jd + Math.max(0.5, Math.abs(state.speed))); }
+  else if (k === 'ArrowLeft'){  setJd(state.jd - Math.max(0.5, Math.abs(state.speed))); }
+  else if (k === '+' || k === '='){ state.speed = Math.sign(state.speed||1) * Math.abs(state.speed) * 2; syncSpeedUI(); }
+  else if (k === '-'){ state.speed = Math.sign(state.speed||1) * Math.abs(state.speed) / 2; syncSpeedUI(); }
+  else if (k === 'r' || k === 'R'){ $('btnResetView').click(); }
+  else if (k === 'f' || k === 'F'){ fitView(); }
+  else if (k === 'c' || k === 'C'){
+    const ids = ALL_CENTERS;
+    setCenter(ids[(ids.indexOf(state.center)+1) % ids.length]);
+  }
+});
+
+/* ---------- boot ---------- */
+resize();
+applyHash();
+syncToggles();
+populateCenterButtons();
+computeScene();
+buildBodyList();
+setCenter(state.center);
+/* an explicit camera in the link wins over auto-framing (validated, never NaN) */
+if (HASH.has('dist'))  state.cam.dist  = num(HASH.get('dist'),  0.02, 4000, state.cam.dist);
+if (HASH.has('yaw'))   state.cam.yaw   = num(HASH.get('yaw'),  -1e4, 1e4, state.cam.yaw);
+if (HASH.has('pitch')) state.cam.pitch = num(HASH.get('pitch'), -1.5, 1.5, state.cam.pitch);
+state.selected = state.center;
+els.btnPlay.textContent = state.playing ? '⏸' : '▶';
+els.btnPlay.classList.toggle('on', !state.playing);
+refreshList();
+syncSpeedUI();
+updateClockText();
+
+/* debug/automation hook: window.__solar, plus '#debug' dumps state into the title */
+window.__solar = {
+  state, computeScene, project, fitView, resetTrails, setCenter, bodyPosition, draw,
+  get frame(){ return frame; },
+  get camBasis(){ return camBasis; },
+  get trails(){ return trailStore; }
+};
+if (location.hash.indexOf('debug') >= 0){
+  setInterval(() => {                      // rewritten continuously so a late DOM
+    const rows = frame.ids.map(id => {     // dump captures the latest state
+      const s = frame.screen[id];
+      return id + '=' + (s && s.ok ? Math.round(s.x) + ',' + Math.round(s.y) + ',z' + s.z.toFixed(2) : 'CULLED');
+    });
+    document.title = 'DBG ' + JSON.stringify({
+      W, H, DPR, cw: canvas.clientWidth, ch: canvas.clientHeight,
+      ix: window.innerWidth, iy: window.innerHeight, cam: state.cam,
+      f: Math.round(camBasis.f), draws: drawCount
+    }) + ' :: ' + rows.join(' ');
+  }, 300);
+}
+
+requestAnimationFrame(tick);
+/* panels only need re-rendering when the clock or the selection actually moved */
+let lastPanelKey = null;
+setInterval(() => {
+  const key = state.jd + '|' + state.selected + '|' + state.center;
+  if (key === lastPanelKey) return;
+  lastPanelKey = key;
+  refreshList();
+  refreshDetail();
+}, 700);
+
+})();
+</script>
+</body>
+</html>
