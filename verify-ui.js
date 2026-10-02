@@ -48,7 +48,9 @@ const CASES = [
   { name: 'moon hidden',               hash: '#showMoon=0&center=earth',          rows: 9,  live: true  },
   { name: 'paused + real scale',       hash: '#pause=1&compress=0&center=sun',    rows: 10, live: false },
   { name: 'nonsense hash entirely',    hash: '#%%%&=&center=&&jd=NaN',            rows: 10, live: true  },
-  { name: 'out-of-range epoch year',   hash: '#date=1700-01-01&pause=1',          rows: 10, live: false }
+  { name: 'out-of-range epoch year',   hash: '#date=1700-01-01&pause=1',          rows: 10, live: false },
+  { name: 'pure scene (ui=0)',         hash: '#ui=0&center=sun',                  rows: 10, live: true  },
+  { name: 'ui=0 + malformed camera',   hash: '#ui=0&dist=abc&pitch=zzz',          rows: 10, live: true  }
 ];
 
 let pass = 0, fail = 0;

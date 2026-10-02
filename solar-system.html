@@ -98,6 +98,9 @@
   #frameBadge{position:fixed;left:50%;bottom:40px;transform:translateX(-50%);z-index:12;
     font-size:13px;letter-spacing:2px;color:var(--accent2);text-shadow:0 0 14px rgba(255,212,94,.5);
     pointer-events:none;opacity:.85}
+  /* #ui=0 : 纯场景，用于截图 / 嵌入网页 */
+  body.no-ui #topbar, body.no-ui aside, body.no-ui #hint, body.no-ui #frameBadge{display:none}
+
   #btnPanels{display:none}
   @media (max-width:900px){
     #btnPanels{display:inline-block}
@@ -1176,6 +1179,7 @@ for (const [id, key] of TOGGLES){
 /* URL hash: #center=earth&trail=800&date=2024-11-01&speed=0&compress=1 ... */
 function applyHash(){
   const h = HASH;
+  if (h.get('ui') === '0') document.body.classList.add('no-ui');   // 纯场景模式
   if (h.has('center') && ALL_CENTERS.includes(h.get('center'))) state.center = h.get('center');
   if (h.has('date')){
     const raw = h.get('date');
